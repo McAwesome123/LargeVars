@@ -5,18 +5,18 @@
 #include "self_test.h"
 
 #include <cfloat>
+#include <cmath>
 #include <cstdint>
 #include <format>
 #include <iostream>
 #include <string>
+#include <string.h>
 
-
-int main()
+int main(int argc, const char* const argv[])
 {
 	using namespace std;	// :3
 
-	constexpr bool run_self_tests = true;
-	if constexpr (run_self_tests)
+	if (argc > 1 && strncmp(argv[1], "--test", sizeof("--test")) == 0)
 	{
 		// Estimated relative times:
 		self_test_addition();			// 6x
@@ -90,6 +90,13 @@ int main()
 
 	cout << "\n";
 
+	cout << (LargeInt(-FLT_MAX)) << "\n";
+	cout << format("{:.0f}", -FLT_MAX) << "\n";
+	cout << std::format("{:.0f}", (float)LargeInt(-FLT_MAX)) << "\n";
+	cout << LargeInt(-FLT_MAX - (float)LargeInt(-FLT_MAX)) << "\n";
+
+	cout << "\n";
+
 	cout << (LargeInt(DBL_MAX)) << "\n";
 	cout << format("{:.0f}", DBL_MAX) << "\n";
 	cout << std::format("{:.0f}", (double)LargeInt(DBL_MAX)) << "\n";
@@ -104,7 +111,7 @@ int main()
 	{
 		cout << LargeInt((DBL_MAX + pow(2, 1023) * pow(2, -54)) - (double)(LargeInt(DBL_MAX) + LargeInt(pow(2, 1023) * pow(2, -54)))) << "\n";
 	}
-	catch (LargeInt::invalid_float& exc)
+	catch (const LargeInt::invalid_float_conversion& exc)
 	{
 		cout << "An exception occurred: " << exc.what() << "\n";
 	}
@@ -118,7 +125,7 @@ int main()
 	{
 		cout << LargeInt((DBL_MAX + pow(2, 1023) * pow(2, -53)) - (double)(LargeInt(DBL_MAX) + LargeInt(pow(2, 1023) * pow(2, -53)))) << "\n";
 	}
-	catch (LargeInt::invalid_float& exc)
+	catch (const LargeInt::invalid_float_conversion& exc)
 	{
 		cout << "An exception occurred: " << exc.what() << "\n";
 	}

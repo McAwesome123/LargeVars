@@ -16,7 +16,7 @@
 // and spawn 8 times as many threads as that number is.
 // yes, i did pull those numbers out of my ass.
 
-const uint64_t max_reported_errors = 1000;
+constexpr uint64_t max_reported_errors = 1000;
 
 #if defined (_WIN32)
 	#include <Windows.h>
@@ -25,9 +25,9 @@ const uint64_t max_reported_errors = 1000;
 	#include <errhandlingapi.h>
 	#include <processthreadsapi.h>
 
-	const double thread_count_mult = 8.0;
-	const double affinity_count_mult = 0.75;
-	const size_t max_str_buffer = 32768;
+	constexpr double thread_count_mult = 8.0;
+	constexpr double affinity_count_mult = 0.75;
+	constexpr size_t max_str_buffer = 32768;
 
 	static void set_process_affinity()
 	{
@@ -41,10 +41,10 @@ const uint64_t max_reported_errors = 1000;
 
 		// win32 api is a fuck
 		HANDLE process = GetCurrentProcess();
-		unique_ptr<ULONG_PTR> process_affinity_mask = make_unique<ULONG_PTR>();
-		unique_ptr<ULONG_PTR> system_affinity_mask = make_unique<ULONG_PTR>();
+		DWORD_PTR process_affinity_mask;
+		DWORD_PTR system_affinity_mask;
 
-		if (!GetProcessAffinityMask(process, process_affinity_mask.get(), system_affinity_mask.get()))
+		if (!GetProcessAffinityMask(process, &process_affinity_mask, &system_affinity_mask))
 		{
 			unique_ptr<format_message_str> str = make_unique<format_message_str>(max_str_buffer);
 
@@ -60,7 +60,7 @@ const uint64_t max_reported_errors = 1000;
 			}
 		}
 
-		if (*process_affinity_mask != *system_affinity_mask)
+		if (process_affinity_mask != system_affinity_mask)
 		{
 			return;
 		}
@@ -72,11 +72,11 @@ const uint64_t max_reported_errors = 1000;
 			return;
 		}
 
-		thread_shift_count = (unsigned int)trunc(thread_shift_count * (1 - affinity_count_mult));
+		thread_shift_count = static_cast<unsigned int>(trunc(thread_shift_count * (1 - affinity_count_mult)));
 
-		*process_affinity_mask = (*process_affinity_mask >> thread_shift_count) & *system_affinity_mask;
+		process_affinity_mask = (process_affinity_mask >> thread_shift_count) & system_affinity_mask;
 
-		if (!SetProcessAffinityMask(process, *process_affinity_mask.get()))
+		if (!SetProcessAffinityMask(process, process_affinity_mask))
 		{
 			unique_ptr<format_message_str> str = make_unique<format_message_str>(max_str_buffer);
 
@@ -93,8 +93,8 @@ const uint64_t max_reported_errors = 1000;
 		}
 	}
 #else
-	const double thread_count_mult = 0.75;
-	const double affinity_count_mult = 1.0;
+	constexpr double thread_count_mult = 0.75;
+	constexpr double affinity_count_mult = 1.0;
 
 	static void set_process_affinity()
 	{
@@ -110,12 +110,12 @@ void self_test_addition()
 
 	set_process_affinity();
 
-	const int32_t startA = INT16_MIN;
-	const int32_t stopA = INT16_MAX + 1;
-	const int32_t startB = INT16_MIN;
-	const int32_t stopB = INT16_MAX + 1;
+	constexpr int32_t startA = INT16_MIN;
+	constexpr int32_t stopA = INT16_MAX + 1;
+	constexpr int32_t startB = INT16_MIN;
+	constexpr int32_t stopB = INT16_MAX + 1;
 
-	auto start = chrono::high_resolution_clock::now();
+	const auto start = chrono::high_resolution_clock::now();
 
 	auto single_test = [](int32_t start, uint32_t step_size, vector<pair<int64_t, int64_t>> *failed_tests, uint64_t* num_failed_tests)
 	{
@@ -126,7 +126,7 @@ void self_test_addition()
 				int64_t numA = static_cast<int64_t>(a);
 				int64_t numB = static_cast<int64_t>(b);
 
-				int64_t result = numA + numB;
+				const int64_t result = numA + numB;
 
 				LargeInt largeIntA = LargeInt(numA);
 				LargeInt largeIntB = LargeInt(numB);
@@ -146,18 +146,19 @@ void self_test_addition()
 		}
 	};
 
-	unsigned int thread_count = (unsigned int)trunc(max(thread::hardware_concurrency() * thread_count_mult * affinity_count_mult, 4.0));
+	unsigned int thread_count = static_cast<unsigned int>(trunc(max(thread::hardware_concurrency() * thread_count_mult * affinity_count_mult, 4.0)));
 	vector<jthread> threads = {};
-	vector<shared_ptr<vector<pair<int64_t, int64_t>>>> failed_tests = {};
-	vector<shared_ptr<uint64_t>> num_failed_tests = {};
+	vector<vector<pair<int64_t, int64_t>>> failed_tests = {};
+	vector<uint64_t> num_failed_tests = {};
+
+	failed_tests.reserve(thread_count);
+	num_failed_tests.reserve(thread_count);
 
 	for (unsigned int count = 0; count < thread_count; count++)
 	{
-		shared_ptr<vector<pair<int64_t, int64_t>>> ptr_failed = make_shared<vector<pair<int64_t, int64_t>>>(vector<pair<int64_t, int64_t>>());
-		shared_ptr<uint64_t> ptr_num_failed = make_shared<uint64_t>(0);
-		threads.push_back(jthread(single_test, startA + count, thread_count, ptr_failed.get(), ptr_num_failed.get()));
-		failed_tests.push_back(ptr_failed);
-		num_failed_tests.push_back(ptr_num_failed);
+		failed_tests.push_back(vector<pair<int64_t, int64_t>>(vector<pair<int64_t, int64_t>>()));
+		num_failed_tests.push_back(0);
+		threads.push_back(jthread(single_test, startA + count, thread_count, &(*failed_tests.rbegin()), &(*num_failed_tests.rbegin())));
 	}
 
 	for (auto& iter : threads)
@@ -169,11 +170,11 @@ void self_test_addition()
 
 	for (auto& iter : num_failed_tests)
 	{
-		total_failed_tests += *(iter.get());
+		total_failed_tests += iter;
 	}
 
-	auto stop = chrono::high_resolution_clock::now();
-	auto duration = chrono::duration_cast<chrono::milliseconds>(stop - start);
+	const auto stop = chrono::high_resolution_clock::now();
+	const auto duration = chrono::duration_cast<chrono::milliseconds>(stop - start);
 
 	cout << "Tests finished. Took: " << duration.count() / 1000 << "." << format("{:03}", duration.count() % 1000) << "s." << endl;
 	cout << "\nTotal tests done: " << (static_cast<uint64_t>(stopA) - startA) * (static_cast<uint64_t>(stopB) - startB) << endl;
@@ -185,12 +186,12 @@ void self_test_addition()
 		uint64_t num_errors_reported = max_reported_errors;
 		for (auto outer_iter = failed_tests.begin(); outer_iter != failed_tests.end() && num_errors_reported > 0; outer_iter++)
 		{
-			for (auto inner_iter = outer_iter->get()->begin(); inner_iter != outer_iter->get()->end() && num_errors_reported > 0; inner_iter++, num_errors_reported--)
+			for (auto inner_iter = outer_iter->begin(); inner_iter != outer_iter->end() && num_errors_reported > 0; inner_iter++, num_errors_reported--)
 			{
-				int64_t numA = inner_iter->first;
-				int64_t numB = inner_iter->second;
+				const int64_t numA = inner_iter->first;
+				const int64_t numB = inner_iter->second;
 
-				int64_t result = numA + numB;
+				const int64_t result = numA + numB;
 
 				LargeInt largeIntA = LargeInt(numA);
 				LargeInt largeIntB = LargeInt(numB);
@@ -212,12 +213,12 @@ void self_test_subtraction()
 
 	set_process_affinity();
 
-	const int32_t startA = INT16_MIN;
-	const int32_t stopA = INT16_MAX + 1;
-	const int32_t startB = INT16_MIN;
-	const int32_t stopB = INT16_MAX + 1;
+	constexpr int32_t startA = INT16_MIN;
+	constexpr int32_t stopA = INT16_MAX + 1;
+	constexpr int32_t startB = INT16_MIN;
+	constexpr int32_t stopB = INT16_MAX + 1;
 
-	auto start = chrono::high_resolution_clock::now();
+	const auto start = chrono::high_resolution_clock::now();
 
 	auto single_test = [](int32_t start, uint32_t step_size, vector<pair<int64_t, int64_t>> *failed_tests, uint64_t* num_failed_tests)
 	{
@@ -228,7 +229,7 @@ void self_test_subtraction()
 				int64_t numA = static_cast<int64_t>(a);
 				int64_t numB = static_cast<int64_t>(b);
 
-				int64_t result = numA - numB;
+				const int64_t result = numA - numB;
 
 				LargeInt largeIntA = LargeInt(numA);
 				LargeInt largeIntB = LargeInt(numB);
@@ -247,18 +248,19 @@ void self_test_subtraction()
 		}
 	};
 
-	unsigned int thread_count = (unsigned int)trunc(max(thread::hardware_concurrency() * thread_count_mult * affinity_count_mult, 4.0));
+	unsigned int thread_count = static_cast<unsigned int>(trunc(max(thread::hardware_concurrency() * thread_count_mult * affinity_count_mult, 4.0)));
 	vector<jthread> threads = {};
-	vector<shared_ptr<vector<pair<int64_t, int64_t>>>> failed_tests = {};
-	vector<shared_ptr<uint64_t>> num_failed_tests = {};
+	vector<vector<pair<int64_t, int64_t>>> failed_tests = {};
+	vector<uint64_t> num_failed_tests = {};
+
+	failed_tests.reserve(thread_count);
+	num_failed_tests.reserve(thread_count);
 
 	for (unsigned int count = 0; count < thread_count; count++)
 	{
-		shared_ptr<vector<pair<int64_t, int64_t>>> ptr_failed = make_shared<vector<pair<int64_t, int64_t>>>(vector<pair<int64_t, int64_t>>());
-		shared_ptr<uint64_t> ptr_num_failed = make_shared<uint64_t>(0);
-		threads.push_back(jthread(single_test, startA + count, thread_count, ptr_failed.get(), ptr_num_failed.get()));
-		failed_tests.push_back(ptr_failed);
-		num_failed_tests.push_back(ptr_num_failed);
+		failed_tests.push_back(vector<pair<int64_t, int64_t>>(vector<pair<int64_t, int64_t>>()));
+		num_failed_tests.push_back(0);
+		threads.push_back(jthread(single_test, startA + count, thread_count, &(*failed_tests.rbegin()), &(*num_failed_tests.rbegin())));
 	}
 
 	for (auto& iter : threads)
@@ -270,11 +272,11 @@ void self_test_subtraction()
 
 	for (auto& iter : num_failed_tests)
 	{
-		total_failed_tests += *(iter.get());
+		total_failed_tests += iter;
 	}
 
-	auto stop = chrono::high_resolution_clock::now();
-	auto duration = chrono::duration_cast<chrono::milliseconds>(stop - start);
+	const auto stop = chrono::high_resolution_clock::now();
+	const auto duration = chrono::duration_cast<chrono::milliseconds>(stop - start);
 
 	cout << "Tests finished. Took: " << duration.count() / 1000 << "." << format("{:03}", duration.count() % 1000) << "s." << endl;
 	cout << "\nTotal tests done: " << (static_cast<uint64_t>(stopA) - startA) * (static_cast<uint64_t>(stopB) - startB) << endl;
@@ -286,12 +288,12 @@ void self_test_subtraction()
 		uint64_t num_errors_reported = max_reported_errors;
 		for (auto outer_iter = failed_tests.begin(); outer_iter != failed_tests.end() && num_errors_reported > 0; outer_iter++)
 		{
-			for (auto inner_iter = outer_iter->get()->begin(); inner_iter != outer_iter->get()->end() && num_errors_reported > 0; inner_iter++, num_errors_reported--)
+			for (auto inner_iter = outer_iter->begin(); inner_iter != outer_iter->end() && num_errors_reported > 0; inner_iter++, num_errors_reported--)
 			{
-				int64_t numA = inner_iter->first;
-				int64_t numB = inner_iter->second;
+				const int64_t numA = inner_iter->first;
+				const int64_t numB = inner_iter->second;
 
-				int64_t result = numA - numB;
+				const int64_t result = numA - numB;
 
 				LargeInt largeIntA = LargeInt(numA);
 				LargeInt largeIntB = LargeInt(numB);
@@ -313,12 +315,12 @@ void self_test_multiplication()
 
 	set_process_affinity();
 
-	const int32_t startA = INT16_MIN;
-	const int32_t stopA = INT16_MAX + 1;
-	const int32_t startB = INT16_MIN;
-	const int32_t stopB = INT16_MAX + 1;
+	constexpr int32_t startA = INT16_MIN;
+	constexpr int32_t stopA = INT16_MAX + 1;
+	constexpr int32_t startB = INT16_MIN;
+	constexpr int32_t stopB = INT16_MAX + 1;
 
-	auto start = chrono::high_resolution_clock::now();
+	const auto start = chrono::high_resolution_clock::now();
 
 	auto single_test = [](int32_t start, uint32_t step_size, vector<pair<int64_t, int64_t>>* failed_tests, uint64_t* num_failed_tests)
 	{
@@ -329,7 +331,7 @@ void self_test_multiplication()
 				int64_t numA = static_cast<int64_t>(a);
 				int64_t numB = static_cast<int64_t>(b);
 
-				int64_t result = numA * numB;
+				const int64_t result = numA * numB;
 
 				LargeInt largeIntA = LargeInt(numA);
 				LargeInt largeIntB = LargeInt(numB);
@@ -348,18 +350,19 @@ void self_test_multiplication()
 		}
 	};
 
-	unsigned int thread_count = (unsigned int)trunc(max(thread::hardware_concurrency() * thread_count_mult * affinity_count_mult, 4.0));
+	unsigned int thread_count = static_cast<unsigned int>(trunc(max(thread::hardware_concurrency() * thread_count_mult * affinity_count_mult, 4.0)));
 	vector<jthread> threads = {};
-	vector<shared_ptr<vector<pair<int64_t, int64_t>>>> failed_tests = {};
-	vector<shared_ptr<uint64_t>> num_failed_tests = {};
+	vector<vector<pair<int64_t, int64_t>>> failed_tests = {};
+	vector<uint64_t> num_failed_tests = {};
+
+	failed_tests.reserve(thread_count);
+	num_failed_tests.reserve(thread_count);
 
 	for (unsigned int count = 0; count < thread_count; count++)
 	{
-		shared_ptr<vector<pair<int64_t, int64_t>>> ptr_failed = make_shared<vector<pair<int64_t, int64_t>>>(vector<pair<int64_t, int64_t>>());
-		shared_ptr<uint64_t> ptr_num_failed = make_shared<uint64_t>(0);
-		threads.push_back(jthread(single_test, startA + count, thread_count, ptr_failed.get(), ptr_num_failed.get()));
-		failed_tests.push_back(ptr_failed);
-		num_failed_tests.push_back(ptr_num_failed);
+		failed_tests.push_back(vector<pair<int64_t, int64_t>>(vector<pair<int64_t, int64_t>>()));
+		num_failed_tests.push_back(0);
+		threads.push_back(jthread(single_test, startA + count, thread_count, &(*failed_tests.rbegin()), &(*num_failed_tests.rbegin())));
 	}
 
 	for (auto& iter : threads)
@@ -371,11 +374,11 @@ void self_test_multiplication()
 
 	for (auto& iter : num_failed_tests)
 	{
-		total_failed_tests += *(iter.get());
+		total_failed_tests += iter;
 	}
 
-	auto stop = chrono::high_resolution_clock::now();
-	auto duration = chrono::duration_cast<chrono::milliseconds>(stop - start);
+	const auto stop = chrono::high_resolution_clock::now();
+	const auto duration = chrono::duration_cast<chrono::milliseconds>(stop - start);
 
 	cout << "Tests finished. Took: " << duration.count() / 1000 << "." << format("{:03}", duration.count() % 1000) << "s." << endl;
 	cout << "\nTotal tests done: " << (static_cast<uint64_t>(stopA) - startA) * (static_cast<uint64_t>(stopB) - startB) << endl;
@@ -387,12 +390,12 @@ void self_test_multiplication()
 		uint64_t num_errors_reported = max_reported_errors;
 		for (auto outer_iter = failed_tests.begin(); outer_iter != failed_tests.end() && num_errors_reported > 0; outer_iter++)
 		{
-			for (auto inner_iter = outer_iter->get()->begin(); inner_iter != outer_iter->get()->end() && num_errors_reported > 0; inner_iter++, num_errors_reported--)
+			for (auto inner_iter = outer_iter->begin(); inner_iter != outer_iter->end() && num_errors_reported > 0; inner_iter++, num_errors_reported--)
 			{
-				int64_t numA = inner_iter->first;
-				int64_t numB = inner_iter->second;
+				const int64_t numA = inner_iter->first;
+				const int64_t numB = inner_iter->second;
 
-				int64_t result = numA * numB;
+				const int64_t result = numA * numB;
 
 				LargeInt largeIntA = LargeInt(numA);
 				LargeInt largeIntB = LargeInt(numB);
@@ -414,12 +417,12 @@ void self_test_division()
 
 	set_process_affinity();
 
-	const int32_t startA = INT16_MIN;
-	const int32_t stopA = INT16_MAX + 1;
-	const int32_t startB = INT16_MIN;
-	const int32_t stopB = INT16_MAX + 1;
+	constexpr int32_t startA = INT16_MIN;
+	constexpr int32_t stopA = INT16_MAX + 1;
+	constexpr int32_t startB = INT16_MIN;
+	constexpr int32_t stopB = INT16_MAX + 1;
 
-	auto start = chrono::high_resolution_clock::now();
+	const auto start = chrono::high_resolution_clock::now();
 
 	auto single_test = [](int32_t start, uint32_t step_size, vector<pair<int64_t, int64_t>>* failed_tests, uint64_t* num_failed_tests)
 	{
@@ -435,7 +438,7 @@ void self_test_division()
 				int64_t numA = static_cast<int64_t>(a);
 				int64_t numB = static_cast<int64_t>(b);
 
-				int64_t result = numA / numB;
+				const int64_t result = numA / numB;
 
 				LargeInt largeIntA = LargeInt(numA);
 				LargeInt largeIntB = LargeInt(numB);
@@ -454,18 +457,19 @@ void self_test_division()
 		}
 	};
 
-	unsigned int thread_count = (unsigned int)trunc(max(thread::hardware_concurrency() * thread_count_mult * affinity_count_mult, 4.0));
+	unsigned int thread_count = static_cast<unsigned int>(trunc(max(thread::hardware_concurrency() * thread_count_mult * affinity_count_mult, 4.0)));
 	vector<jthread> threads = {};
-	vector<shared_ptr<vector<pair<int64_t, int64_t>>>> failed_tests = {};
-	vector<shared_ptr<uint64_t>> num_failed_tests = {};
+	vector<vector<pair<int64_t, int64_t>>> failed_tests = {};
+	vector<uint64_t> num_failed_tests = {};
+
+	failed_tests.reserve(thread_count);
+	num_failed_tests.reserve(thread_count);
 
 	for (unsigned int count = 0; count < thread_count; count++)
 	{
-		shared_ptr<vector<pair<int64_t, int64_t>>> ptr_failed = make_shared<vector<pair<int64_t, int64_t>>>(vector<pair<int64_t, int64_t>>());
-		shared_ptr<uint64_t> ptr_num_failed = make_shared<uint64_t>(0);
-		threads.push_back(jthread(single_test, startA + count, thread_count, ptr_failed.get(), ptr_num_failed.get()));
-		failed_tests.push_back(ptr_failed);
-		num_failed_tests.push_back(ptr_num_failed);
+		failed_tests.push_back(vector<pair<int64_t, int64_t>>(vector<pair<int64_t, int64_t>>()));
+		num_failed_tests.push_back(0);
+		threads.push_back(jthread(single_test, startA + count, thread_count, &(*failed_tests.rbegin()), &(*num_failed_tests.rbegin())));
 	}
 
 	for (auto& iter : threads)
@@ -477,11 +481,11 @@ void self_test_division()
 
 	for (auto& iter : num_failed_tests)
 	{
-		total_failed_tests += *(iter.get());
+		total_failed_tests += iter;
 	}
 
-	auto stop = chrono::high_resolution_clock::now();
-	auto duration = chrono::duration_cast<chrono::milliseconds>(stop - start);
+	const auto stop = chrono::high_resolution_clock::now();
+	const auto duration = chrono::duration_cast<chrono::milliseconds>(stop - start);
 
 	cout << "Tests finished. Took: " << duration.count() / 1000 << "." << format("{:03}", duration.count() % 1000) << "s." << endl;
 	cout << "\nTotal tests done: " << (static_cast<uint64_t>(stopA) - startA) * (static_cast<uint64_t>(stopB) - startB) << endl;
@@ -493,12 +497,12 @@ void self_test_division()
 		uint64_t num_errors_reported = max_reported_errors;
 		for (auto outer_iter = failed_tests.begin(); outer_iter != failed_tests.end() && num_errors_reported > 0; outer_iter++)
 		{
-			for (auto inner_iter = outer_iter->get()->begin(); inner_iter != outer_iter->get()->end() && num_errors_reported > 0; inner_iter++, num_errors_reported--)
+			for (auto inner_iter = outer_iter->begin(); inner_iter != outer_iter->end() && num_errors_reported > 0; inner_iter++, num_errors_reported--)
 			{
-				int64_t numA = inner_iter->first;
-				int64_t numB = inner_iter->second;
+				const int64_t numA = inner_iter->first;
+				const int64_t numB = inner_iter->second;
 
-				int64_t result = numA / numB;
+				const int64_t result = numA / numB;
 
 				LargeInt largeIntA = LargeInt(numA);
 				LargeInt largeIntB = LargeInt(numB);
@@ -520,12 +524,12 @@ void self_test_modulo()
 
 	set_process_affinity();
 
-	const int32_t startA = INT16_MIN;
-	const int32_t stopA = INT16_MAX + 1;
-	const int32_t startB = INT16_MIN;
-	const int32_t stopB = INT16_MAX + 1;
+	constexpr int32_t startA = INT16_MIN;
+	constexpr int32_t stopA = INT16_MAX + 1;
+	constexpr int32_t startB = INT16_MIN;
+	constexpr int32_t stopB = INT16_MAX + 1;
 
-	auto start = chrono::high_resolution_clock::now();
+	const auto start = chrono::high_resolution_clock::now();
 
 	auto single_test = [](int32_t start, uint32_t step_size, vector<pair<int64_t, int64_t>>* failed_tests, uint64_t* num_failed_tests)
 	{
@@ -541,7 +545,7 @@ void self_test_modulo()
 				int64_t numA = static_cast<int64_t>(a);
 				int64_t numB = static_cast<int64_t>(b);
 
-				int64_t result = numA % numB;
+				const int64_t result = numA % numB;
 
 				LargeInt largeIntA = LargeInt(numA);
 				LargeInt largeIntB = LargeInt(numB);
@@ -560,18 +564,19 @@ void self_test_modulo()
 		}
 	};
 
-	unsigned int thread_count = (unsigned int)trunc(max(thread::hardware_concurrency() * thread_count_mult * affinity_count_mult, 4.0));
+	unsigned int thread_count = static_cast<unsigned int>(trunc(max(thread::hardware_concurrency() * thread_count_mult * affinity_count_mult, 4.0)));
 	vector<jthread> threads = {};
-	vector<shared_ptr<vector<pair<int64_t, int64_t>>>> failed_tests = {};
-	vector<shared_ptr<uint64_t>> num_failed_tests = {};
+	vector<vector<pair<int64_t, int64_t>>> failed_tests = {};
+	vector<uint64_t> num_failed_tests = {};
+
+	failed_tests.reserve(thread_count);
+	num_failed_tests.reserve(thread_count);
 
 	for (unsigned int count = 0; count < thread_count; count++)
 	{
-		shared_ptr<vector<pair<int64_t, int64_t>>> ptr_failed = make_shared<vector<pair<int64_t, int64_t>>>(vector<pair<int64_t, int64_t>>());
-		shared_ptr<uint64_t> ptr_num_failed = make_shared<uint64_t>(0);
-		threads.push_back(jthread(single_test, startA + count, thread_count, ptr_failed.get(), ptr_num_failed.get()));
-		failed_tests.push_back(ptr_failed);
-		num_failed_tests.push_back(ptr_num_failed);
+		failed_tests.push_back(vector<pair<int64_t, int64_t>>(vector<pair<int64_t, int64_t>>()));
+		num_failed_tests.push_back(0);
+		threads.push_back(jthread(single_test, startA + count, thread_count, &(*failed_tests.rbegin()), &(*num_failed_tests.rbegin())));
 	}
 
 	for (auto& iter : threads)
@@ -583,11 +588,11 @@ void self_test_modulo()
 
 	for (auto& iter : num_failed_tests)
 	{
-		total_failed_tests += *(iter.get());
+		total_failed_tests += iter;
 	}
 
-	auto stop = chrono::high_resolution_clock::now();
-	auto duration = chrono::duration_cast<chrono::milliseconds>(stop - start);
+	const auto stop = chrono::high_resolution_clock::now();
+	const auto duration = chrono::duration_cast<chrono::milliseconds>(stop - start);
 
 	cout << "Tests finished. Took: " << duration.count() / 1000 << "." << format("{:03}", duration.count() % 1000) << "s." << endl;
 	cout << "\nTotal tests done: " << (static_cast<uint64_t>(stopA) - startA) * (static_cast<uint64_t>(stopB) - startB) << endl;
@@ -599,12 +604,12 @@ void self_test_modulo()
 		uint64_t num_errors_reported = max_reported_errors;
 		for (auto outer_iter = failed_tests.begin(); outer_iter != failed_tests.end() && num_errors_reported > 0; outer_iter++)
 		{
-			for (auto inner_iter = outer_iter->get()->begin(); inner_iter != outer_iter->get()->end() && num_errors_reported > 0; inner_iter++, num_errors_reported--)
+			for (auto inner_iter = outer_iter->begin(); inner_iter != outer_iter->end() && num_errors_reported > 0; inner_iter++, num_errors_reported--)
 			{
-				int64_t numA = inner_iter->first;
-				int64_t numB = inner_iter->second;
+				const int64_t numA = inner_iter->first;
+				const int64_t numB = inner_iter->second;
 
-				int64_t result = numA % numB;
+				const int64_t result = numA % numB;
 
 				LargeInt largeIntA = LargeInt(numA);
 				LargeInt largeIntB = LargeInt(numB);
@@ -626,12 +631,12 @@ void self_test_bitwise()
 
 	set_process_affinity();
 
-	const int32_t startA = INT16_MIN;
-	const int32_t stopA = INT16_MAX + 1;
-	const int32_t startB = INT16_MIN;
-	const int32_t stopB = INT16_MAX + 1;
+	constexpr int32_t startA = INT16_MIN;
+	constexpr int32_t stopA = INT16_MAX + 1;
+	constexpr int32_t startB = INT16_MIN;
+	constexpr int32_t stopB = INT16_MAX + 1;
 
-	auto start = chrono::high_resolution_clock::now();
+	const auto start = chrono::high_resolution_clock::now();
 
 	auto single_test = [](int32_t start, uint32_t step_size, vector<pair<int64_t, int64_t>>* failed_tests, uint64_t* num_failed_tests)
 	{
@@ -642,10 +647,10 @@ void self_test_bitwise()
 				int64_t numA = static_cast<int64_t>(a);
 				int64_t numB = static_cast<int64_t>(b);
 
-				int64_t resultA = numA & numB;
-				int64_t resultB = numA | numB;
-				int64_t resultC = numA ^ numB;
-				int64_t resultD = ~numA;
+				const int64_t resultA = numA & numB;
+				const int64_t resultB = numA | numB;
+				const int64_t resultC = numA ^ numB;
+				const int64_t resultD = ~numA;
 
 				LargeInt largeIntA = LargeInt(numA);
 				LargeInt largeIntB = LargeInt(numB);
@@ -668,18 +673,19 @@ void self_test_bitwise()
 		}
 	};
 
-	unsigned int thread_count = (unsigned int)trunc(max(thread::hardware_concurrency() * thread_count_mult * affinity_count_mult, 4.0));
+	unsigned int thread_count = static_cast<unsigned int>(trunc(max(thread::hardware_concurrency() * thread_count_mult * affinity_count_mult, 4.0)));
 	vector<jthread> threads = {};
-	vector<shared_ptr<vector<pair<int64_t, int64_t>>>> failed_tests = {};
-	vector<shared_ptr<uint64_t>> num_failed_tests = {};
+	vector<vector<pair<int64_t, int64_t>>> failed_tests = {};
+	vector<uint64_t> num_failed_tests = {};
+
+	failed_tests.reserve(thread_count);
+	num_failed_tests.reserve(thread_count);
 
 	for (unsigned int count = 0; count < thread_count; count++)
 	{
-		shared_ptr<vector<pair<int64_t, int64_t>>> ptr_failed = make_shared<vector<pair<int64_t, int64_t>>>(vector<pair<int64_t, int64_t>>());
-		shared_ptr<uint64_t> ptr_num_failed = make_shared<uint64_t>(0);
-		threads.push_back(jthread(single_test, startA + count, thread_count, ptr_failed.get(), ptr_num_failed.get()));
-		failed_tests.push_back(ptr_failed);
-		num_failed_tests.push_back(ptr_num_failed);
+		failed_tests.push_back(vector<pair<int64_t, int64_t>>(vector<pair<int64_t, int64_t>>()));
+		num_failed_tests.push_back(0);
+		threads.push_back(jthread(single_test, startA + count, thread_count, &(*failed_tests.rbegin()), &(*num_failed_tests.rbegin())));
 	}
 
 	for (auto& iter : threads)
@@ -691,11 +697,11 @@ void self_test_bitwise()
 
 	for (auto& iter : num_failed_tests)
 	{
-		total_failed_tests += *(iter.get());
+		total_failed_tests += iter;
 	}
 
-	auto stop = chrono::high_resolution_clock::now();
-	auto duration = chrono::duration_cast<chrono::milliseconds>(stop - start);
+	const auto stop = chrono::high_resolution_clock::now();
+	const auto duration = chrono::duration_cast<chrono::milliseconds>(stop - start);
 
 	cout << "Tests finished. Took: " << duration.count() / 1000 << "." << format("{:03}", duration.count() % 1000) << "s." << endl;
 	cout << "\nTotal tests done: " << (static_cast<uint64_t>(stopA) - startA) * (static_cast<uint64_t>(stopB) - startB) << endl;
@@ -707,15 +713,15 @@ void self_test_bitwise()
 		uint64_t num_errors_reported = max_reported_errors;
 		for (auto outer_iter = failed_tests.begin(); outer_iter != failed_tests.end() && num_errors_reported > 0; outer_iter++)
 		{
-			for (auto inner_iter = outer_iter->get()->begin(); inner_iter != outer_iter->get()->end() && num_errors_reported > 0; inner_iter++, num_errors_reported--)
+			for (auto inner_iter = outer_iter->begin(); inner_iter != outer_iter->end() && num_errors_reported > 0; inner_iter++, num_errors_reported--)
 			{
-				int64_t numA = inner_iter->first;
-				int64_t numB = inner_iter->second;
+				const int64_t numA = inner_iter->first;
+				const int64_t numB = inner_iter->second;
 
-				int64_t resultA = numA & numB;
-				int64_t resultB = numA | numB;
-				int64_t resultC = numA ^ numB;
-				int64_t resultD = ~numA;
+				const int64_t resultA = numA & numB;
+				const int64_t resultB = numA | numB;
+				const int64_t resultC = numA ^ numB;
+				const int64_t resultD = ~numA;
 
 				LargeInt largeIntA = LargeInt(numA);
 				LargeInt largeIntB = LargeInt(numB);
@@ -746,12 +752,12 @@ void self_test_bitshift()
 
 	set_process_affinity();
 
-	const int32_t startA = INT32_MIN >> 5;
-	const int32_t stopA = INT32_MAX >> 5;
-	const int8_t startB = 0;
-	const int8_t stopB = 32;
+	constexpr int32_t startA = INT32_MIN >> 5;
+	constexpr int32_t stopA = INT32_MAX >> 5;
+	constexpr int8_t startB = 0;
+	constexpr int8_t stopB = 32;
 
-	auto start = chrono::high_resolution_clock::now();
+	const auto start = chrono::high_resolution_clock::now();
 
 	auto single_test = [](int32_t start, uint32_t step_size, vector<pair<int64_t, int64_t>>* failed_tests, uint64_t* num_failed_tests)
 	{
@@ -762,8 +768,8 @@ void self_test_bitshift()
 				int64_t numA = static_cast<int64_t>(a);
 				int64_t numB = static_cast<int64_t>(b);
 
-				int64_t resultA = numA << numB;
-				int64_t resultB = numA >> numB;
+				const int64_t resultA = numA << numB;
+				const int64_t resultB = numA >> numB;
 
 				LargeInt largeIntA = LargeInt(numA);
 
@@ -782,18 +788,19 @@ void self_test_bitshift()
 		}
 	};
 
-	unsigned int thread_count = max(thread::hardware_concurrency() * 2, 4u);
+	unsigned int thread_count = static_cast<unsigned int>(trunc(max(thread::hardware_concurrency() * thread_count_mult * affinity_count_mult, 4.0)));
 	vector<jthread> threads = {};
-	vector<shared_ptr<vector<pair<int64_t, int64_t>>>> failed_tests = {};
-	vector<shared_ptr<uint64_t>> num_failed_tests = {};
+	vector<vector<pair<int64_t, int64_t>>> failed_tests = {};
+	vector<uint64_t> num_failed_tests = {};
+
+	failed_tests.reserve(thread_count);
+	num_failed_tests.reserve(thread_count);
 
 	for (unsigned int count = 0; count < thread_count; count++)
 	{
-		shared_ptr<vector<pair<int64_t, int64_t>>> ptr_failed = make_shared<vector<pair<int64_t, int64_t>>>(vector<pair<int64_t, int64_t>>());
-		shared_ptr<uint64_t> ptr_num_failed = make_shared<uint64_t>(0);
-		threads.push_back(jthread(single_test, startA + count, thread_count, ptr_failed.get(), ptr_num_failed.get()));
-		failed_tests.push_back(ptr_failed);
-		num_failed_tests.push_back(ptr_num_failed);
+		failed_tests.push_back(vector<pair<int64_t, int64_t>>(vector<pair<int64_t, int64_t>>()));
+		num_failed_tests.push_back(0);
+		threads.push_back(jthread(single_test, startA + count, thread_count, &(*failed_tests.rbegin()), &(*num_failed_tests.rbegin())));
 	}
 
 	for (auto& iter : threads)
@@ -805,11 +812,11 @@ void self_test_bitshift()
 
 	for (auto& iter : num_failed_tests)
 	{
-		total_failed_tests += *(iter.get());
+		total_failed_tests += iter;
 	}
 
-	auto stop = chrono::high_resolution_clock::now();
-	auto duration = chrono::duration_cast<chrono::milliseconds>(stop - start);
+	const auto stop = chrono::high_resolution_clock::now();
+	const auto duration = chrono::duration_cast<chrono::milliseconds>(stop - start);
 
 	cout << "Tests finished. Took: " << duration.count() / 1000 << "." << format("{:03}", duration.count() % 1000) << "s." << endl;
 	cout << "\nTotal tests done: " << (static_cast<uint64_t>(stopA) - startA) * (static_cast<uint64_t>(stopB) - startB) << endl;
@@ -821,13 +828,13 @@ void self_test_bitshift()
 		uint64_t num_errors_reported = max_reported_errors;
 		for (auto outer_iter = failed_tests.begin(); outer_iter != failed_tests.end() && num_errors_reported > 0; outer_iter++)
 		{
-			for (auto inner_iter = outer_iter->get()->begin(); inner_iter != outer_iter->get()->end() && num_errors_reported > 0; inner_iter++, num_errors_reported--)
+			for (auto inner_iter = outer_iter->begin(); inner_iter != outer_iter->end() && num_errors_reported > 0; inner_iter++, num_errors_reported--)
 			{
-				int64_t numA = inner_iter->first;
-				int64_t numB = inner_iter->second;
+				const int64_t numA = inner_iter->first;
+				const int64_t numB = inner_iter->second;
 
-				int64_t resultA = numA << numB;
-				int64_t resultB = numA >> numB;
+				const int64_t resultA = numA << numB;
+				const int64_t resultB = numA >> numB;
 
 				LargeInt largeIntA = LargeInt(numA);
 
@@ -851,10 +858,10 @@ void self_test_unary()
 
 	set_process_affinity();
 
-	const int64_t startNum = INT32_MIN;
-	const int64_t stopNum = INT32_MAX + 1ll;
+	constexpr int64_t startNum = INT32_MIN;
+	constexpr int64_t stopNum = INT32_MAX + 1ll;
 
-	auto start = chrono::high_resolution_clock::now();
+	const auto start = chrono::high_resolution_clock::now();
 
 	auto single_test = [](int64_t start, uint64_t step_size, vector<int64_t>* failed_tests, uint64_t* num_failed_tests)
 	{
@@ -883,18 +890,19 @@ void self_test_unary()
 		}
 	};
 
-	unsigned int thread_count = (unsigned int)trunc(max(thread::hardware_concurrency() * thread_count_mult * affinity_count_mult, 4.0));
+	unsigned int thread_count = static_cast<unsigned int>(trunc(max(thread::hardware_concurrency() * thread_count_mult * affinity_count_mult, 4.0)));
 	vector<jthread> threads = {};
-	vector<shared_ptr<vector<int64_t>>> failed_tests = {};
-	vector<shared_ptr<uint64_t>> num_failed_tests = {};
+	vector<vector<int64_t>> failed_tests = {};
+	vector<uint64_t> num_failed_tests = {};
+
+	failed_tests.reserve(thread_count);
+	num_failed_tests.reserve(thread_count);
 
 	for (unsigned int count = 0; count < thread_count; count++)
 	{
-		shared_ptr<vector<int64_t>> ptr_failed = make_shared<vector<int64_t>>(vector<int64_t>());
-		shared_ptr<uint64_t> ptr_num_failed = make_shared<uint64_t>(0);
-		threads.push_back(jthread(single_test, startNum + count, thread_count, ptr_failed.get(), ptr_num_failed.get()));
-		failed_tests.push_back(ptr_failed);
-		num_failed_tests.push_back(ptr_num_failed);
+		failed_tests.push_back(vector<int64_t>(vector<int64_t>()));
+		num_failed_tests.push_back(0);
+		threads.push_back(jthread(single_test, startNum + count, thread_count, &(*failed_tests.rbegin()), &(*num_failed_tests.rbegin())));
 	}
 
 	for (auto& iter : threads)
@@ -906,11 +914,11 @@ void self_test_unary()
 
 	for (auto& iter : num_failed_tests)
 	{
-		total_failed_tests += *(iter.get());
+		total_failed_tests += iter;
 	}
 
-	auto stop = chrono::high_resolution_clock::now();
-	auto duration = chrono::duration_cast<chrono::milliseconds>(stop - start);
+	const auto stop = chrono::high_resolution_clock::now();
+	const auto duration = chrono::duration_cast<chrono::milliseconds>(stop - start);
 
 	cout << "Tests finished. Took: " << duration.count() / 1000 << "." << format("{:03}", duration.count() % 1000) << "s." << endl;
 	cout << "\nTotal tests done: " << static_cast<int64_t>(stopNum) - startNum << endl;
@@ -922,7 +930,7 @@ void self_test_unary()
 		uint64_t num_errors_reported = max_reported_errors;
 		for (auto outer_iter = failed_tests.begin(); outer_iter != failed_tests.end() && num_errors_reported > 0; outer_iter++)
 		{
-			for (auto inner_iter = outer_iter->get()->begin(); inner_iter != outer_iter->get()->end() && num_errors_reported > 0; inner_iter++, num_errors_reported--)
+			for (auto inner_iter = outer_iter->begin(); inner_iter != outer_iter->end() && num_errors_reported > 0; inner_iter++, num_errors_reported--)
 			{
 				int64_t resultAdd = *inner_iter;
 				resultAdd++;

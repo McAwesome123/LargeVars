@@ -25,7 +25,7 @@
 class LargeInt
 {
 public:
-	// Throwable class that comes into play when you forget to add an if (num == 0) { dont(); }
+	// Throwable class for when you forget to add an 'if (num == 0) { dont(); }'
 	class div_by_zero : public std::logic_error
 	{
 	public:
@@ -39,16 +39,16 @@ public:
 	};
 
 	// Throwable class for when an invalid float is given to the constructor (i.e nan or inf)
-	class invalid_float : public std::logic_error
+	class invalid_float_conversion : public std::logic_error
 	{
 	public:
-		invalid_float(const std::string& what_arg) : logic_error(what_arg)
+		invalid_float_conversion(const std::string& what_arg) : logic_error(what_arg)
 		{}
 
-		invalid_float(const char* what_arg) : logic_error(what_arg)
+		invalid_float_conversion(const char* what_arg) : logic_error(what_arg)
 		{}
 
-		invalid_float(const invalid_float& other) = default;
+		invalid_float_conversion(const invalid_float_conversion& other) = default;
 	};
 
 	// Default constructor that initializes the class with a value of 0.
@@ -75,12 +75,13 @@ public:
 	explicit LargeInt(bool val) : value({ static_cast<uint8_t>(val) }), size(sizeof(uint8_t)), max_size(0)
 	{}
 
-	// Conversion constructor for every other integer type
+	// Conversion constructor for integer types that aren't a boolean.
 	template<typename Integer, std::enable_if_t<std::is_integral<Integer>::value, bool> = true, std::enable_if_t<!std::is_same<Integer, bool>::value, bool> = true>
 	LargeInt(Integer val) : LargeInt(val, 0)
 	{}
 
-	// Conversion constructor for floating point types
+	// Conversion constructor for floating point types.
+	// Throws invalid_float_conversion if the float given is inf or NaN.
 	template<typename FloatingPoint, std::enable_if_t<std::is_floating_point<FloatingPoint>::value, bool> = true>
 	explicit LargeInt(FloatingPoint val) : LargeInt(val, 0)
 	{}
@@ -92,12 +93,12 @@ public:
 		trim_size();
 	}
 
-	// The actual integer constructor.
+	// Constructor for integer types that aren't a boolean.
 	// If the number would take up more bytes than the max size, excess bytes are truncated.
 	template<typename Integer, std::enable_if_t<std::is_integral<Integer>::value, bool> = true, std::enable_if_t<!std::is_same<Integer, bool>::value, bool> = true>
 	LargeInt(Integer val, size_t max_size) : size(0), max_size(max_size)
 	{
-		bool is_val_negative = val < 0;
+		const bool is_val_negative = val < 0;
 
 		if (val == 0)
 		{
@@ -109,12 +110,12 @@ public:
 		{
 			while (!too_large(size + 1) && val != 0 && val != -1)
 			{
-				uint8_t num = static_cast<uint8_t>(val);
+				const uint8_t num = static_cast<uint8_t>(val);
 				value.push_back(num);
 				val >>= byte_bits;
 				size++;
 			}
-			if (val == -1)	// :3
+			if (val == -1)
 			{
 				value.push_back(UINT8_MAX);
 				size++;
@@ -122,9 +123,10 @@ public:
 		}
 		else
 		{
+			// i blame gcc
 			while (!too_large(size + 1) && val != 0)
 			{
-				uint8_t num = static_cast<uint8_t>(val);
+				const uint8_t num = static_cast<uint8_t>(val);
 				value.push_back(num);
 				val >>= byte_bits;
 				size++;
@@ -140,23 +142,23 @@ public:
 		trim_size();
 	}
 
-	// The actual floating point constructor.
-	// It seems to work mostly fine, but massive double values can be wrong.
+	// Constructor for floating point types.
+	// Throws invalid_float_conversion if the float given is inf or NaN.
 	// If the number would take up more bytes than the max size, excess bytes are truncated.
 	template<typename FloatingPoint, std::enable_if_t<std::is_floating_point<FloatingPoint>::value, bool> = true>
 	LargeInt(FloatingPoint val, size_t max_size) : size(0), max_size(max_size)
 	{
 		if (std::isinf(val))
 		{
-			throw invalid_float("Cannot convert infinity to LargeInt.");
+			throw invalid_float_conversion("Cannot convert infinity to LargeInt.");
 		}
 		else if (std::isnan(val))
 		{
-			throw invalid_float("Cannot convert NaN to LargeInt.");
+			throw invalid_float_conversion("Cannot convert NaN to LargeInt.");
 		}
 
 		val = trunc(val);
-		bool is_val_negative = val < 0;
+		const bool is_val_negative = val < 0;
 
 		if (val == 0)
 		{
@@ -168,16 +170,22 @@ public:
 
 		while (!too_large(size + 1) && val != 0)
 		{
-			uint8_t num = static_cast<uint8_t>(fmod(val, static_cast<FloatingPoint>(pow(2, byte_bits))));
+			// fmod seems to give better results than casting to byte directly
+			const uint8_t num = static_cast<uint8_t>(fmod(val, static_cast<FloatingPoint>(pow(2, byte_bits))));
 			value.push_back(num);
 			val = trunc(val / static_cast<FloatingPoint>(pow(2, byte_bits)));
 			size++;
 		}
 
-		if (is_negative() && !is_val_negative)
+		if (is_negative())
 		{
 			value.push_back(0);
 			size++;
+		}
+
+		if (is_val_negative)
+		{
+			*this = -*this;
 		}
 
 		trim_size();
@@ -208,7 +216,7 @@ public:
 
 			if (carry)
 			{
-				uint8_t current = iter;
+				const uint8_t current = iter;
 				iter++;
 				carry = iter < current;
 			}
@@ -306,7 +314,7 @@ public:
 				}
 			}
 
-			uint8_t current = new_val.value[index];
+			const uint8_t current = new_val.value[index];
 			new_val.value[index]++;
 			carry = (new_val.value[index] < current);
 		}
@@ -328,7 +336,7 @@ public:
 
 			for (size_t i = 0; i < new_val.value.size() && carry; i++)
 			{
-				uint8_t current = new_val.value[i];
+				const uint8_t current = new_val.value[i];
 				new_val.value[i]++;
 				carry = (new_val.value[i] < current);
 			}
@@ -356,8 +364,8 @@ public:
 	LargeInt operator-(LargeInt other) const
 	{
 		// Save some stuff that we're about to change
-		size_t other_max_size = other.max_size;
-		bool other_was_negative = other.is_negative();
+		const size_t other_max_size = other.max_size;
+		const bool other_was_negative = other.is_negative();
 		other.change_max_size(other.size);
 
 		// Negate the other number
@@ -370,7 +378,7 @@ public:
 
 		for (size_t i = 0; i < other.value.size() && carry; i++)
 		{
-			uint8_t current = other.value[i];
+			const uint8_t current = other.value[i];
 			other.value[i]++;
 			carry = (other.value[i] < current);
 		}
@@ -460,7 +468,7 @@ public:
 		}
 
 		// For the same reasons as multiplication, we take the absolutes
-		bool negative_result = (is_negative() != other.is_negative());
+		const bool negative_result = (is_negative() != other.is_negative());
 		LargeInt result(0, max_size);
 		LargeInt left = LargeInt(*this, 0).abs();
 		LargeInt right = LargeInt(other, 0).abs();
@@ -551,7 +559,7 @@ public:
 	LargeInt operator&(const LargeInt& other) const
 	{
 		LargeInt new_val = *this;
-		bool val_is_negative = new_val.is_negative();
+		const bool val_is_negative = new_val.is_negative();
 
 		for (size_t i = 0; (new_val.max_size == 0 || i < new_val.max_size) && (i < new_val.size || i < other.size); i++)
 		{
@@ -592,7 +600,7 @@ public:
 	LargeInt operator|(const LargeInt& other) const
 	{
 		LargeInt new_val = *this;
-		bool val_is_negative = new_val.is_negative();
+		const bool val_is_negative = new_val.is_negative();
 
 		for (size_t i = 0; (new_val.max_size == 0 || i < new_val.max_size) && (i < new_val.size || i < other.size); i++)
 		{
@@ -634,7 +642,7 @@ public:
 	LargeInt operator^(const LargeInt& other) const
 	{
 		LargeInt new_val = *this;
-		bool val_is_negative = new_val.is_negative();
+		const bool val_is_negative = new_val.is_negative();
 
 		for (size_t i = 0; (new_val.max_size == 0 || i < new_val.max_size) && (i < other.size || i < new_val.size); i++)
 		{
@@ -692,7 +700,7 @@ public:
 
 		size_t other_size = static_cast<size_t>(other);
 		LargeInt new_val = *this;
-		bool val_is_negative = new_val.is_negative();
+		const bool val_is_negative = new_val.is_negative();
 
 		// If the number of shifts is larger than the max amount of bits, return a value of 0.
 		if (new_val.max_size != 0 && other_size > new_val.max_size * byte_bits)
@@ -729,7 +737,7 @@ public:
 			// Shift the rest of the bits
 			for (size_t i = new_val.value.size() - 2; i != SIZE_MAX; i--)
 			{
-				bool carry = ((new_val.value[i] & (1 << (byte_bits - 1))) != 0);
+				const bool carry = ((new_val.value[i] & (1 << (byte_bits - 1))) != 0);
 				if (carry)
 				{
 					new_val.value[i + 1] += 1;
@@ -766,7 +774,7 @@ public:
 
 		size_t other_size = static_cast<size_t>(other);
 		LargeInt new_val = *this;
-		bool val_is_negative = new_val.is_negative();
+		const bool val_is_negative = new_val.is_negative();
 
 		// If the number of shifts is larger than the amount of bits,
 		// return a value of 0 if positive or -1 if negative.
@@ -835,7 +843,7 @@ public:
 		// Add 1 to the first byte and check for overflow. If it overflowed, repeat with the next byte.
 		for (auto iter = new_val.value.begin(); iter != new_val.value.end() && carry; iter++)
 		{
-			uint8_t current = *iter;
+			const uint8_t current = *iter;
 			(*iter)++;
 			carry = (*iter < current);
 		}
@@ -870,7 +878,7 @@ public:
 		// Subtract 1 from the first byte and check for underflow. If it underflowed, repeat with the next byte.
 		for (auto iter = new_val.value.begin(); iter != new_val.value.end() && carry; iter++)
 		{
-			uint8_t current = *iter;
+			const uint8_t current = *iter;
 			(*iter)--;
 			carry = (*iter > current);
 		}
@@ -912,7 +920,7 @@ public:
 	// Compares two numbers and returns the relevant ordering constant.
 	// Uses weak ordering as substitutability is not guaranteed due to max size possibly differing.
 	// Use is_exactly_equal() if you want to guarantee substitutability.
-	std::weak_ordering operator<=>(const LargeInt& other) const
+	std::weak_ordering operator<=>(const LargeInt& other) const noexcept
 	{
 		if (!is_negative() && other.is_negative())
 		{
@@ -950,7 +958,7 @@ public:
 	// Compares two numbers and returns true if they have the same value and false otherwise.
 	// Does not guarantee substitutability as max size may be different.
 	// Use is_exactly_equal() if you want to guarantee substitutability.
-	bool operator==(const LargeInt& other) const
+	bool operator==(const LargeInt& other) const noexcept
 	{
 		if (is_negative() != other.is_negative())
 		{
@@ -974,31 +982,31 @@ public:
 	}
 
 	// Checks if the given size would be larger than the max size of the number.
-	bool too_large(size_t new_size) const
+	bool too_large(size_t new_size) const noexcept
 	{
 		return max_size != 0 && max_size < new_size;
 	}
 
 	// Get a copy of the value vector.
-	std::vector<uint8_t> get_value() const
+	std::vector<uint8_t> get_value() const noexcept
 	{
 		return value;
 	}
 
 	// Get the value's size.
-	size_t get_size() const
+	size_t get_size() const noexcept
 	{
 		return size;
 	}
 
 	// Get the value's maximum size.
-	size_t get_max_size() const
+	size_t get_max_size() const noexcept
 	{
 		return max_size;
 	}
 
 	// Get whether the value is negative (<0) or not.
-	bool is_negative() const
+	bool is_negative() const noexcept
 	{
 		return (value[value.size() - 1] & (1 << (byte_bits - 1))) != 0;
 	}
@@ -1010,7 +1018,7 @@ public:
 	}
 
 	// Returns true if the two numbers have an equal value AND max size.
-	bool is_exactly_equal(const LargeInt& other) const
+	bool is_exactly_equal(const LargeInt& other) const noexcept
 	{
 		if (max_size != other.max_size)
 		{
@@ -1023,14 +1031,14 @@ public:
 	inline friend std::ostream &operator<<(std::ostream &out, const LargeInt &num);
 
 	// Boolean cast operator
-	explicit operator bool() const
+	explicit operator bool() const noexcept
 	{
 		return size > 1 || value[0] != 0;
 	}
 
 	// Integer cast operator
 	template<typename Integer, std::enable_if_t<std::is_integral<Integer>::value, bool> = true>
-	explicit operator Integer() const
+	explicit operator Integer() const noexcept
 	{
 		Integer num = 0;
 
@@ -1055,7 +1063,7 @@ public:
 	{
 		FloatingPoint num = 0;
 
-		bool val_is_negative = is_negative();
+		const bool val_is_negative = is_negative();
 		LargeInt abs_val = LargeInt(*this, 0).abs();
 
 		if (abs_val.size > 2 && (abs_val.size - 2) * byte_bits > std::numeric_limits<FloatingPoint>::max_exponent)
@@ -1067,11 +1075,11 @@ public:
 		{
 			if (abs_val.value[i] != 0)
 			{
-				num += (FloatingPoint)(abs_val.value[i] * pow(2, byte_bits * i));
+				num += static_cast<FloatingPoint>(abs_val.value[i] * pow(2, byte_bits * i));
 			}
 		}
 
-		return num * (FloatingPoint)(val_is_negative ? -1.0 : 1.0);
+		return num * static_cast<FloatingPoint>(val_is_negative ? -1.0 : 1.0);
 	}
 
 	// String cast operator
