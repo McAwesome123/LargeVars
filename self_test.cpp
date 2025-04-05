@@ -19,87 +19,87 @@
 constexpr uint64_t max_reported_errors = 1000;
 
 #if defined (_WIN32)
-	#include <Windows.h>
-	#include <basetsd.h>
-	#include <cmath>
-	#include <errhandlingapi.h>
-	#include <processthreadsapi.h>
+#include <Windows.h>
+#include <basetsd.h>
+#include <cmath>
+#include <errhandlingapi.h>
+#include <processthreadsapi.h>
 
-	constexpr double thread_count_mult = 8.0;
-	constexpr double affinity_count_mult = 0.75;
-	constexpr size_t max_str_buffer = 32768;
+constexpr double thread_count_mult = 8.0;
+constexpr double affinity_count_mult = 0.75;
+constexpr size_t max_str_buffer = 32768;
 
-	static void set_process_affinity()
+static void set_process_affinity()
+{
+	using namespace std;
+
+	#ifdef UNICODE
+	using format_message_str = wchar_t[];
+	#else
+	using format_message_str = char[];
+	#endif
+
+	// win32 api is a fuck
+	HANDLE process = GetCurrentProcess();
+	DWORD_PTR process_affinity_mask;
+	DWORD_PTR system_affinity_mask;
+
+	if (!GetProcessAffinityMask(process, &process_affinity_mask, &system_affinity_mask))
 	{
-		using namespace std;
+		unique_ptr<format_message_str> str = make_unique<format_message_str>(max_str_buffer);
 
-		#ifdef UNICODE
-		using format_message_str = wchar_t[];
-		#else
-		using format_message_str = char[];
-		#endif
-
-		// win32 api is a fuck
-		HANDLE process = GetCurrentProcess();
-		DWORD_PTR process_affinity_mask;
-		DWORD_PTR system_affinity_mask;
-
-		if (!GetProcessAffinityMask(process, &process_affinity_mask, &system_affinity_mask))
+		if (FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr, GetLastError(), MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), str.get(), max_str_buffer, nullptr) != 0)
 		{
-			unique_ptr<format_message_str> str = make_unique<format_message_str>(max_str_buffer);
-
-			if (FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr, GetLastError(), MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), str.get(), max_str_buffer, nullptr) != 0)
-			{
-				wcout << "Error getting affinity mask: " << str.get() << "\n";
-				return;
-			}
-			else
-			{
-				cout << "Error getting affinity mask: " << GetLastError() << "\n";
-				return;
-			}
-		}
-
-		if (process_affinity_mask != system_affinity_mask)
-		{
+			wcout << "Error getting affinity mask: " << str.get() << "\n";
 			return;
 		}
-
-		unsigned int thread_shift_count = thread::hardware_concurrency();
-
-		if (thread_shift_count == 0)
+		else
 		{
+			cout << "Error getting affinity mask: " << GetLastError() << "\n";
 			return;
-		}
-
-		thread_shift_count = static_cast<unsigned int>(trunc(thread_shift_count * (1 - affinity_count_mult)));
-
-		process_affinity_mask = (process_affinity_mask >> thread_shift_count) & system_affinity_mask;
-
-		if (!SetProcessAffinityMask(process, process_affinity_mask))
-		{
-			unique_ptr<format_message_str> str = make_unique<format_message_str>(max_str_buffer);
-
-			if (FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr, GetLastError(), MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), str.get(), max_str_buffer, nullptr) != 0)
-			{
-				wcout << "Error setting affinity mask: " << str.get() << "\n";
-				return;
-			}
-			else
-			{
-				cout << "Error setting affinity mask: " << GetLastError() << "\n";
-				return;
-			}
 		}
 	}
-#else
-	constexpr double thread_count_mult = 0.75;
-	constexpr double affinity_count_mult = 1.0;
 
-	static void set_process_affinity()
+	if (process_affinity_mask != system_affinity_mask)
 	{
 		return;
 	}
+
+	unsigned int thread_shift_count = thread::hardware_concurrency();
+
+	if (thread_shift_count == 0)
+	{
+		return;
+	}
+
+	thread_shift_count = static_cast<unsigned int>(trunc(thread_shift_count * (1 - affinity_count_mult)));
+
+	process_affinity_mask = (process_affinity_mask >> thread_shift_count) & system_affinity_mask;
+
+	if (!SetProcessAffinityMask(process, process_affinity_mask))
+	{
+		unique_ptr<format_message_str> str = make_unique<format_message_str>(max_str_buffer);
+
+		if (FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr, GetLastError(), MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), str.get(), max_str_buffer, nullptr) != 0)
+		{
+			wcout << "Error setting affinity mask: " << str.get() << "\n";
+			return;
+		}
+		else
+		{
+			cout << "Error setting affinity mask: " << GetLastError() << "\n";
+			return;
+		}
+	}
+}
+#else
+constexpr double thread_count_mult = 0.75;
+constexpr double affinity_count_mult = 1.0;
+
+static void set_process_affinity()
+{
+	return;
+}
 #endif
 
 void self_test_addition()
@@ -117,7 +117,7 @@ void self_test_addition()
 
 	const auto start = chrono::high_resolution_clock::now();
 
-	auto single_test = [](int32_t start, uint32_t step_size, vector<pair<int64_t, int64_t>> *failed_tests, uint64_t* num_failed_tests)
+	auto single_test = [](int32_t start, uint32_t step_size, vector<pair<int64_t, int64_t>>* failed_tests, uint64_t* num_failed_tests)
 	{
 		for (int32_t a = start; a < stopA; a += step_size)
 		{
@@ -220,7 +220,7 @@ void self_test_subtraction()
 
 	const auto start = chrono::high_resolution_clock::now();
 
-	auto single_test = [](int32_t start, uint32_t step_size, vector<pair<int64_t, int64_t>> *failed_tests, uint64_t* num_failed_tests)
+	auto single_test = [](int32_t start, uint32_t step_size, vector<pair<int64_t, int64_t>>* failed_tests, uint64_t* num_failed_tests)
 	{
 		for (int32_t a = start; a < stopA; a += step_size)
 		{

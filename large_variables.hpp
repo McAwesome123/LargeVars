@@ -66,7 +66,7 @@ public:
 
 	// Constructor for using a byte vector (since that's basically what the class is).
 	// If the number would take up more bytes than the max size, excess bytes are truncated.
-	LargeInt(const std::vector<uint8_t>&other, size_t max_size) : value(other), size(other.size()), max_size(max_size)
+	LargeInt(const std::vector<uint8_t>& other, size_t max_size) : value(other), size(other.size()), max_size(max_size)
 	{
 		trim_size();
 	}
@@ -233,7 +233,7 @@ public:
 	}
 
 	// Copies the value without changing the max size.
-	LargeInt &copy_value(const LargeInt &other)
+	LargeInt& copy_value(const LargeInt& other)
 	{
 		value = other.value;
 
@@ -835,7 +835,7 @@ public:
 	}
 
 	// Increment by 1
-	LargeInt &operator++()
+	LargeInt& operator++()
 	{
 		LargeInt new_val = *this;
 		bool carry = true;
@@ -870,7 +870,7 @@ public:
 	}
 
 	// Decrement by 1
-	LargeInt &operator--()
+	LargeInt& operator--()
 	{
 		LargeInt new_val = *this;
 		bool carry = true;
@@ -1028,7 +1028,7 @@ public:
 		return *this == other;
 	}
 
-	inline friend std::ostream &operator<<(std::ostream &out, const LargeInt &num);
+	inline friend std::ostream& operator<<(std::ostream& out, const LargeInt& num);
 
 	// Boolean cast operator
 	explicit operator bool() const noexcept
@@ -1068,7 +1068,7 @@ public:
 
 		if (abs_val.size > 2 && (abs_val.size - 2) * byte_bits > std::numeric_limits<FloatingPoint>::max_exponent)
 		{
-			return std::numeric_limits<FloatingPoint>::infinity() * (FloatingPoint)(val_is_negative ? -1.0 : 1.0);
+			return std::numeric_limits<FloatingPoint>::infinity() * static_cast<FloatingPoint>(val_is_negative ? -1.0 : 1.0);
 		}
 
 		for (size_t i = abs_val.size - 1; i != SIZE_MAX && num >= std::numeric_limits<FloatingPoint>::lowest() && num <= std::numeric_limits<FloatingPoint>::max(); i--)
@@ -1208,9 +1208,9 @@ protected:
 	}
 };
 
-std::ostream &operator<<(std::ostream &out, const LargeInt &num)
+std::ostream& operator<<(std::ostream& out, const LargeInt& num)
 {
-	out << (std::string)num;
+	out << static_cast<std::string>(num);
 
 	return out;
 }
