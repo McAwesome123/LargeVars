@@ -154,7 +154,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="large_variables.hpp" />
-    <ClInclude Include="self_test.h" />
+    <ClInclude Include="self_test.hpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="LargeVars.ruleset" />

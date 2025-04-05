@@ -1,5 +1,5 @@
 #include "large_variables.hpp"
-#include "self_test.h"
+#include "self_test.hpp"
 
 #include <chrono>
 #include <cstdint>
