@@ -861,7 +861,7 @@ public:
 		return *this;
 	}
 
-	// :lksix:
+	// lksix
 	LargeInt operator++(int)
 	{
 		LargeInt old_val = *this;
@@ -896,7 +896,7 @@ public:
 		return *this;
 	}
 
-	// :lksix:
+	// lksix
 	LargeInt operator--(int)
 	{
 		LargeInt old_val = *this;
@@ -987,8 +987,9 @@ public:
 		return max_size != 0 && max_size < new_size;
 	}
 
-	// Get a copy of the value vector.
-	std::vector<uint8_t> get_value() const noexcept
+	// Get the value vector.
+	// A const reference return? How queer!
+	const std::vector<uint8_t>& get_value() const noexcept
 	{
 		return value;
 	}
@@ -999,7 +1000,7 @@ public:
 		return size;
 	}
 
-	// Get the value's maximum size.
+	// Get the value's maximum size (0 = uncapped).
 	size_t get_max_size() const noexcept
 	{
 		return max_size;
